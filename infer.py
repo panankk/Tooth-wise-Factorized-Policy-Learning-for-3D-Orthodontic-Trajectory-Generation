@@ -7,15 +7,13 @@ import argparse
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 
-# 导入我们的模块化组件工厂
+
 from models import build_model
 
-# ==========================================
-# ⚙️ 模拟配置文件 (统一入口，方便消融实验)
-# ==========================================
+
 class DummyConfig:
     class DATA:
-        PROCESSED_ROOT = "/home/pa/version4/data/test_data_processed_v11_fix"
+        PROCESSED_ROOT = "/path/to/test_data_processed"
     
     class MODEL:
         class BACKBONE:
@@ -35,8 +33,8 @@ class DummyConfig:
         NUM_TEETH = 32
 
     # 推理专属配置
-    CKPT_PATH = "/home/pa/version-final/checkpoints/checkpoints_full/best_model_all_stages.pth"  
-    SAVE_ROOT = "/home/pa/version-final/inference_results_ab06" 
+    CKPT_PATH = "/path/to/checkpoints"  
+    SAVE_ROOT = "/path/to/inference_results" 
     DEVICE_ID = "0"
     
     MAX_STEPS = 150
@@ -44,13 +42,11 @@ class DummyConfig:
     STOP_THRES_DEG = 3.0   # 3.0度
     MASK_THRESHOLD = 0.5 
     
-    # 不确定性缩放因子 (Symmetric Strategy)
-    # 如果为 0.0: 完全信任均值，忽略方差
-    # 如果 > 0.0: 预测方差大时自动缩小步长
+  
     UNCERTAINTY_SCALE_FACTOR = 0.0 
 
 # ==========================================
-# 🦷 牙位定义 & 类型映射
+# 牙位定义 & 类型映射
 # ==========================================
 FDI_MAP = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28, 
            48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
@@ -64,7 +60,7 @@ TOOTH_TYPE_MAP = {
 }
 
 # ==========================================
-# 🛠️ 辅助函数
+#  辅助函数
 # ==========================================
 def normalize_ortho6d(ortho6d):
     x_raw = ortho6d[..., 0:3]; y_raw = ortho6d[..., 3:6]
@@ -126,7 +122,7 @@ def make_inference_state(curr_p, goal_p, teeth_mask):
     return state.squeeze(0) if not is_batch else state
 
 # ==========================================
-# 🚀 核心推理逻辑
+#  核心推理逻辑
 # ==========================================
 def run_case(case_id, model, device, cfg):
     case_dir = os.path.join(cfg.DATA.PROCESSED_ROOT, case_id)
@@ -220,14 +216,11 @@ def run_case(case_id, model, device, cfg):
         prev_active_pos = mask_move_pos
         prev_active_rot = mask_move_rot
         
-        # 🌟 核心修复：还原训练时真实的物理步长
-        # 因为训练端使用了 effective_mu = mu * prob，网络吐出的 mu 实际上是被放大的。
-        # 这里必须先乘回概率 prob，还原成真实本应移动的距离，以防步长过冲 (Overshooting)。
+       
         effective_pred_mu_pos = pred_mu_pos * prob_pos
         effective_pred_mu_rot = pred_mu_rot * prob_rot
         
-        # --- 位移部分 ---
-        # 使用还原后的步长，再结合硬截断掩码 (0或1) 执行移动
+      
         base_pos_delta = effective_pred_mu_pos * mask_move_pos
         if cfg.UNCERTAINTY_SCALE_FACTOR > 0 and pred_log_var_pos is not None:
             sigma_pos = torch.exp(0.5 * pred_log_var_pos)
@@ -236,7 +229,7 @@ def run_case(case_id, model, device, cfg):
         else:
             final_pos_delta = base_pos_delta
 
-        # --- 旋转部分 ---
+       
         base_rot_delta = (effective_pred_mu_rot / 100.0) * mask_move_rot
         if cfg.UNCERTAINTY_SCALE_FACTOR > 0 and pred_log_var_rot is not None:
             sigma_rot = torch.exp(0.5 * pred_log_var_rot)
@@ -245,7 +238,7 @@ def run_case(case_id, model, device, cfg):
         else:
             final_rot_delta = base_rot_delta
 
-        # --- 物理过滤器 ---
+      
         is_pos_converged = res_pos < 0.05 
         final_pos_delta = final_pos_delta.masked_fill(is_pos_converged, 0.0)
         
@@ -258,18 +251,18 @@ def run_case(case_id, model, device, cfg):
         step_dist_rot = torch.norm(final_rot_delta, dim=-1, keepdim=True)
         final_rot_delta = final_rot_delta.masked_fill(step_dist_rot < 0.005, 0.0)
 
-        # 更新姿态
+        
         curr_pose[..., :3] += final_pos_delta
         curr_pose[..., 3:9] += final_rot_delta
         curr_pose[..., 3:9] = normalize_ortho6d(curr_pose[..., 3:9])
         
-        # 记录
+       
         mp, mr = compute_metrics(curr_pose, goal_pose, mask)
         metrics_log.append({"step": step, "max_pos": mp, "max_rot": mr})
         save_step_to_txt(curr_pose.squeeze(0), step, save_dir, mask.squeeze(0))
         
         if mp < cfg.STOP_THRES_POS and mr < cfg.STOP_THRES_DEG:
-            status = "✅ Success"
+            status = " Success"
             break
             
     with open(os.path.join(save_dir, "metrics.csv"), 'w') as f:
@@ -283,23 +276,23 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = cfg.DEVICE_ID
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
-    print(f"🚀 Modular Inference Engine Started")
-    print(f"📂 Checkpoint: {cfg.CKPT_PATH}")
+    print(f" Modular Inference Engine Started")
+    print(f" Checkpoint: {cfg.CKPT_PATH}")
     
-    # 工厂模式加载模型
+   
     model = build_model(cfg).to(device)
     
     if os.path.exists(cfg.CKPT_PATH):
-        print(f"📦 Loading Model Weights...")
+        print(f"Loading Model Weights...")
         ckpt = torch.load(cfg.CKPT_PATH, map_location=device, weights_only=False)
         if isinstance(ckpt, dict) and 'model_state_dict' in ckpt: 
             model.load_state_dict(ckpt['model_state_dict'], strict=False)
         else: 
             model.load_state_dict(ckpt, strict=False)
         model.eval()
-        print("✅ Model Loaded Successfully.")
+        print("Model Loaded Successfully.")
     else: 
-        print(f"❌ Checkpoint not found: {cfg.CKPT_PATH}")
+        print(f" Checkpoint not found: {cfg.CKPT_PATH}")
         return
 
     cases = sorted([c for c in os.listdir(cfg.DATA.PROCESSED_ROOT) if os.path.isdir(os.path.join(cfg.DATA.PROCESSED_ROOT, c))])
@@ -312,7 +305,7 @@ def main():
         res = run_case(c, model, device, cfg)
         tot_p += res['max_p']; tot_r += res['max_r']
         
-        if "✅" in res['status']:
+        if "S" in res['status']:
             suc += 1
         else:
             is_pos_fail = res['max_p'] >= cfg.STOP_THRES_POS
@@ -333,15 +326,15 @@ def main():
     print("\n" + "="*60)
     print(f"📊 Final Modular Inference Report")
     print("="*60)
-    print(f"✅ Success Rate: {suc/total_cases*100:.1f}% ({suc}/{total_cases})")
-    print(f"❌ Total Failures: {total_fails}")
+    print(f" Success Rate: {suc/total_cases*100:.1f}% ({suc}/{total_cases})")
+    print(f" Total Failures: {total_fails}")
     print("-" * 30)
     if total_fails > 0:
-        print(f"   👉 Due to Position (> {cfg.STOP_THRES_POS}mm): {fail_reasons['Pos']} cases")
-        print(f"   👉 Due to Rotation (> {cfg.STOP_THRES_DEG}°):  {fail_reasons['Rot']} cases")
-        print(f"   👉 Both Failed: {fail_reasons['Both']} cases")
+        print(f"   Due to Position (> {cfg.STOP_THRES_POS}mm): {fail_reasons['Pos']} cases")
+        print(f"   Due to Rotation (> {cfg.STOP_THRES_DEG}°):  {fail_reasons['Rot']} cases")
+        print(f"   Both Failed: {fail_reasons['Both']} cases")
     print("-" * 30)
-    print(f"📏 Avg Final Error -> Pos: {tot_p/total_cases:.4f}mm | Rot: {tot_r/total_cases:.4f}°")
+    print(f" Avg Final Error -> Pos: {tot_p/total_cases:.4f}mm | Rot: {tot_r/total_cases:.4f}°")
     print("="*60)
 
 if __name__ == "__main__": 
