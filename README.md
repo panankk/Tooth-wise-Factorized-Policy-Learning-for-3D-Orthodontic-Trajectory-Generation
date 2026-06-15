@@ -1,6 +1,6 @@
 # Tooth-wise Factorized Policy Learning for 3D Orthodontic Trajectory Generation
 
-This repository contains the implementation of **HMG-Net**, a motion-gated autoregressive framework for 3D orthodontic trajectory generation. HMG-Net predicts staged 6-DoF tooth movement trajectories from an initial malocclusion setup to a target occlusion setup.
+This repository contains the implementation of **TFP-Net**, a motion-gated autoregressive framework for 3D orthodontic trajectory generation. TFP-Net predicts staged 6-DoF tooth movement trajectories from an initial malocclusion setup to a target occlusion setup.
 
 The model decomposes orthodontic trajectory generation into two complementary branches:
 
