@@ -1,4 +1,4 @@
-# HMG-Net: Motion-Gated Autoregressive Learning for 3D Orthodontic Trajectory Generation
+# Tooth-wise Factorized Policy Learning for 3D Orthodontic Trajectory Generation
 
 This repository contains the implementation of **HMG-Net**, a motion-gated autoregressive framework for 3D orthodontic trajectory generation. HMG-Net predicts staged 6-DoF tooth movement trajectories from an initial malocclusion setup to a target occlusion setup.
 
