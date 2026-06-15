@@ -4,31 +4,25 @@ import torch.nn as nn
 class SequentialFusionLoss(nn.Module):
     def __init__(self):
         super().__init__()
-        # log_vars: 仅用于战略层的动态加权 (Focal, Pattern, Bin)
+      
         self.log_vars = nn.Parameter(torch.zeros(3)) 
         
         self.nll_loss = nn.GaussianNLLLoss(reduction='none', full=True) 
         self.mse = nn.MSELoss(reduction='none')
         self.cosine = nn.CosineSimilarity(dim=-1)
         
-        # 方差的全局与冻结限制范围
+      
         self.global_min_log_var = -5.0  
         self.global_max_log_var = 0.5 
         self.freeze_min_log_var = -4.0
         self.freeze_max_log_var = -3.5
         
-        # ==========================================
-        # 🌟 核心修复：精准恢复物理梯度权重 (打破梯度饥饿)
-        # ==========================================
-        # 针对消融实验 (ab_05, 纯 MSE 模式): 
-        # 赋予 50 倍高优权重，完美复原老版本 log_var 自动学到的强度
+      
         self.lambda_mse_pos = 50.0 
         self.lambda_mse_rot = 0.2 
         self.lambda_cos = 5.0 
         
-        # 针对满血版 (V39, NLL 模式):
-        # 因为 NLL 公式内部有 1/(2*sigma^2) 起到约 50 倍的放大作用，
-        # 外部乘数必须恢复成 1.0，绝不能是原来的 0.05！
+      
         self.lambda_nll_pos = 1.0
         self.lambda_nll_rot = 1.0
         self.lambda_nll_freeze = 0.1 
@@ -56,19 +50,15 @@ class SequentialFusionLoss(nn.Module):
         total_loss = torch.tensor(0.0, device=device, requires_grad=True)
         stats = {}
         
-        # ==========================================
-        # 🔥 核心重构：动态路由 (Adaptive Late-Fusion)
-        # ==========================================
+      
         is_pos_deterministic = (log_var_pos is None)
         is_rot_deterministic = (log_var_rot is None)
 
-        # 提前计算门控概率 
+      
         probs_pos = torch.sigmoid(logits_pos).unsqueeze(-1)
         probs_rot = torch.sigmoid(logits_rot).unsqueeze(-1)
 
-        # 🌟 智能分流：
-        # 如果是消融版 (无不确定性)，必须使用概率作为保护伞，防止静止牙齿毒害均值。
-        # 如果是满血版 (有不确定性)，利用 sigma 自动降噪，让 mu 保持纯净物理意义。
+     
         if is_pos_deterministic:
             effective_mu_pos = mu_pos * probs_pos
         else:
@@ -79,10 +69,10 @@ class SequentialFusionLoss(nn.Module):
         else:
             effective_mu_rot = mu_rot
 
-        # --- 1. 动态处理方差 (NLL 模式) ---
+       
         if is_pos_deterministic:
             use_nll_pos = False
-            var_pos = torch.zeros_like(mu_pos) # Dummy
+            var_pos = torch.zeros_like(mu_pos) 
         else:
             if self.current_stage == "STAGE_1":
                 log_var_pos = torch.full_like(log_var_pos, -4.0) 
@@ -94,8 +84,8 @@ class SequentialFusionLoss(nn.Module):
 
         if is_rot_deterministic:
             use_nll_rot = False
-            var_rot = torch.zeros_like(mu_rot) # Dummy
-            log_var_rot = torch.zeros_like(mu_rot) # Dummy for reg
+            var_rot = torch.zeros_like(mu_rot) 
+            log_var_rot = torch.zeros_like(mu_rot) 
         else:
             if self.current_stage in ["STAGE_1", "STAGE_2"]:
                 log_var_rot = torch.full_like(log_var_rot, -4.0)
@@ -110,7 +100,7 @@ class SequentialFusionLoss(nn.Module):
                 use_nll_rot = False
             var_rot = torch.exp(log_var_rot)
 
-        # --- 2. Pos Loss ---
+      
         raw_mse_pos = self.mse(effective_mu_pos, gt_pos_mu).sum(dim=-1)
         weights_pos = torch.where(gt_mask_pos > 0.5, 10.0, 1.0)
         l_mse_pos = (raw_mse_pos * weights_pos * valid_mask).sum() / denom
@@ -127,7 +117,7 @@ class SequentialFusionLoss(nn.Module):
             stats['Raw_P_NLL'] = 0.0; stats['W_P_NLL'] = 0.0
         total_loss = total_loss + term_pos
 
-        # Pos Cosine (只算动的地方)
+        
         moving_pos = (gt_mask_pos > 0.5) & (valid_mask > 0.5)
         l_cos_pos = torch.tensor(0.0, device=device)
         if moving_pos.sum() > 0:
@@ -136,7 +126,7 @@ class SequentialFusionLoss(nn.Module):
         total_loss = total_loss + self.lambda_cos * l_cos_pos
         stats['P_Cos'] = l_cos_pos.item()
 
-        # --- 3. Rot Loss ---
+       
         raw_mse_rot = self.mse(effective_mu_rot, gt_rot_mu).sum(dim=-1)
         weights_rot = torch.where(gt_mask_rot > 0.5, 10.0, 1.0)
         l_mse_rot = (raw_mse_rot * weights_rot * valid_mask).sum() / denom
@@ -163,7 +153,7 @@ class SequentialFusionLoss(nn.Module):
             stats['Var_Reg_Rot'] = 0.0
         total_loss = total_loss + term_rot
 
-        # --- 4. Strategic Loss ---
+       
         def calculate_focal_context_loss(logits, gt_mask, prev_active):
             probs = torch.sigmoid(logits)
             probs = torch.clamp(probs, 1e-7, 1.0 - 1e-7)
@@ -212,7 +202,7 @@ class SequentialFusionLoss(nn.Module):
         total_loss = total_loss + w_bin
         stats['Raw_Bin'] = l_bin_total.item(); stats['W_Bin'] = w_bin.item()
 
-        # --- 5. Stats & Safety Check ---
+      
         stats['Total'] = total_loss.item()
         
         with torch.no_grad():
