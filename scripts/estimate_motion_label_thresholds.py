@@ -3,18 +3,6 @@
 from __future__ import print_function, division
 
 """
-estimate_motion_label_thresholds_quat_to_6d_config.py
-
-直接运行版：从专家 step 文件中读取四元数 [qx,qy,qz,qw]，
-先转换为 rotation matrix，再取前两列组成 6D rotation representation，
-最后统计相邻 step 的 6D rotation difference norm 阈值。
-
-适用于你给出的这种单步格式：
-FDI x y z qx qy qz qw
-
-例如：
-27 -22.6665 15.3546 -6.0654 0.809348 -0.56267 0.168178 0.0085847
-
 功能：
 1. 遍历 expert_root 下所有病例。
 2. 支持每个 step 是 .txt 或 .json。
@@ -24,11 +12,6 @@ FDI x y z qx qy qz qw
 4. 对两种 increment 分别做直方图统计。
 5. 用 Otsu 大津算法和 2-component GMM 估计阈值。
 6. 输出 threshold_summary.csv 和两张直方图。
-
-运行：
-python estimate_motion_label_thresholds_quat_to_6d_config.py
-或：
-python3 estimate_motion_label_thresholds_quat_to_6d_config.py
 """
 
 import os
@@ -42,18 +25,16 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 
-# ============================================================
-# 直接在这里改参数
-# ============================================================
+
 CONFIG = {
     # 专家轨迹根目录：里面应该是一堆病例文件夹，每个病例下有 step_*.txt 或 step_*.json
-    "expert_root": "/home/pa/version4/data/test_data",
+    "expert_root": "/path/to/processed_data",
 
     # 输出目录
-    "output_dir": "threshold_analysis_quat_to_6d",
+    "output_dir": "/path/to/output_dir",
 
     # 分析多少病例；-1 表示全部
-    "num_cases": 1000,
+    "num_cases": -1,
 
     # 随机种子
     "seed": 42,
@@ -73,7 +54,7 @@ CONFIG = {
     # GMM 最多采样点数，避免太慢
     "gmm_max_samples": 300000,
 
-    # 四元数顺序。你给的样例是 qx qy qz qw，所以保持 xyzw。
+  
     # 可选："xyzw" 或 "wxyz"
     "quat_order": "xyzw",
 
