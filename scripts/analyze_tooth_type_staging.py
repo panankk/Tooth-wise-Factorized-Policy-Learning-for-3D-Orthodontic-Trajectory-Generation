@@ -8,7 +8,7 @@ Purpose
 统计专家正畸轨迹中，不同牙齿类型（incisor / canine / premolar / molar）
 是否呈现不同的阶段性运动模式。
 
-核心思想类似 test.py：
+核心思想：
 1. 读取每个病例的逐步专家轨迹 JSON。
 2. 计算相邻 step 之间每颗牙的 translation displacement 和 rotation change。
 3. 根据移动阈值判断每颗牙在每一步是否 active。
