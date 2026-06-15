@@ -20,9 +20,7 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-# ==========================================
-# 核心总装车间：模块化 V39 模型 (支持时空解耦注意力)
-# ==========================================
+
 class DualGatedOrthoGPT(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -34,7 +32,7 @@ class DualGatedOrthoGPT(nn.Module):
         self.num_layers = config.MODEL.NUM_LAYERS 
         self.dropout = config.MODEL.DROPOUT
 
-        # 🌟 核心升级：全局消融控制开关 (通过 YAML 获取，默认开启)
+        #全局消融控制开关 (通过 YAML 获取，默认开启)
         self.window_size = config.MODEL.get('WINDOW_SIZE', 1)
         self.use_temporal_attn = config.MODEL.get('USE_WINDOW_ATTN', True)
         self.use_spatial_attn = config.MODEL.get('USE_SPATIAL_ATTN', True)
@@ -53,22 +51,22 @@ class DualGatedOrthoGPT(nn.Module):
         self.type_embedding = nn.Embedding(4, self.d_model)
 
         # ==========================================
-        # 🌟 4. 时空双塔 Transformer (Spatio-Temporal Decoupled Attention)
+        #  4. 时空双塔 Transformer (Spatio-Temporal Decoupled Attention)
         # ==========================================
         
-        # [新增] A. 时序注意力塔 (Temporal Transformer) - 只看自己的过去
+        # A. 时序注意力塔 (Temporal Transformer) 
         if self.use_temporal_attn and self.window_size > 1:
-            # 时序位置编码 (区分过去第 5 帧和第 1 帧)
+            # 时序位置编码 
             self.temp_pos_emb = nn.Parameter(torch.randn(1, self.window_size, 1, self.d_model) * 0.02)
             
-            # 时序网络不需要太深，2层即可捕获惯性
+           
             temp_enc_p = nn.TransformerEncoderLayer(self.d_model, self.nhead, 2048, self.dropout, batch_first=True, norm_first=True)
             self.temp_transformer_pos = nn.TransformerEncoder(temp_enc_p, num_layers=2)
 
             temp_enc_r = nn.TransformerEncoderLayer(self.d_model, self.nhead, 2048, self.dropout, batch_first=True, norm_first=True)
             self.temp_transformer_rot = nn.TransformerEncoder(temp_enc_r, num_layers=2)
 
-        # B. 空间注意力塔 (Spatial Transformer) - 牙齿间互相看 (原版核心防撞机制)
+        # B. 空间注意力塔 (Spatial Transformer) 
         self.pos_embed = nn.Sequential(
             nn.Linear(6, 256), nn.LayerNorm(256), nn.GELU(),
             nn.Linear(256, self.d_model), nn.LayerNorm(self.d_model), nn.Dropout(self.dropout)
@@ -92,10 +90,6 @@ class DualGatedOrthoGPT(nn.Module):
         self.gate_rot_head: BaseStrategy = build_strategy(config.MODEL.STRATEGY)
 
     def forward(self, shape_points, current_state, timestep, tooth_types, teeth_mask, strat_vec_pos, strat_vec_rot):
-        # -----------------------------------------------------------
-        # 🚀 维度动态解包 (The Dimension Reshape Trick)
-        # train.py 传来的是 [B*W, 32, 18], 我们需要动态还原出真实的 B 和 W
-        # -----------------------------------------------------------
         B = shape_points.shape[0]                # 真实 Batch Size
         num_teeth = current_state.shape[1]       # 牙齿数 (32)
         W = current_state.shape[0] // B          # 动态计算当前数据的窗口大小 W
@@ -115,7 +109,7 @@ class DualGatedOrthoGPT(nn.Module):
         else:
             t_emb = torch.zeros(B, self.d_model, device=current_state.device) # 彻底致盲全局时间
         
-        # 🩸 牙齿类别消融控制
+        # 牙齿类别消融控制
         ids = torch.arange(num_teeth, device=current_state.device).unsqueeze(0).expand(B, -1)
         if self.use_tooth_type:
             identity = self.tooth_embedding(ids) + self.type_embedding(tooth_types) # [B, N, D]
@@ -132,7 +126,7 @@ class DualGatedOrthoGPT(nn.Module):
         token_r = token_r_base + x_shape.unsqueeze(1) + identity.unsqueeze(1) + t_emb.unsqueeze(1).unsqueeze(2)
 
         # ==========================================
-        # 🌟 步骤 1.5: 时序注意力 (Temporal Attention)
+        # 步骤 1.5: 时序注意力 (Temporal Attention)
         # 逻辑：让每颗牙齿沿着时间轴 W 回顾自己的历史
         # ==========================================
         if self.use_temporal_attn and W > 1 and hasattr(self, 'temp_transformer_pos'):
@@ -157,11 +151,11 @@ class DualGatedOrthoGPT(nn.Module):
             curr_token_r = token_r[:, -1, :, :] # [B, N, D]
 
         # ==========================================
-        # 🛡️ 步骤 2: 空间注意力 (Spatial Attention - 防碰撞)
+        # 步骤 2: 空间注意力 (Spatial Attention - 防碰撞)
         # ==========================================
         src_mask = (teeth_mask == 0) if teeth_mask is not None else None
         
-        # 🩸 空间特征消融控制
+        # 空间特征消融控制
         if self.use_spatial_attn:
             feat_p = self.pos_transformer(curr_token_p, src_key_padding_mask=src_mask) 
             feat_r = self.rot_transformer(curr_token_r, src_key_padding_mask=src_mask) 
@@ -176,13 +170,13 @@ class DualGatedOrthoGPT(nn.Module):
         mu_rot, log_var_rot = self.rot_head(feat_r)
         mu_rot = torch.clamp(mu_rot, -5.0, 5.0)
         # ==========================================
-        # 🧠 步骤 3: 战略通道前向传播 (Strategy Gate)
+        # 步骤 3: 战略通道前向传播 (Strategy Gate)
         # ==========================================
         # 注意：战略通道永远只基于当前局势 (strat_vec)，与历史 W 无关
         logits_pos = self.gate_pos_head(strat_vec_pos).squeeze(-1)
         logits_rot = self.gate_rot_head(strat_vec_rot).squeeze(-1)
 
         # ==========================================
-        # 返回结果 (严格匹配 train.py 的接收顺序)
+        # 返回结果 
         # ==========================================
         return mu_pos, log_var_pos, mu_rot, log_var_rot, logits_pos, logits_rot
