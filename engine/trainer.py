@@ -29,20 +29,17 @@ class TrainingMonitor:
 
         self.logger = self._setup_console_logger()
 
-        # Global best across all stages. This preserves your original behavior.
+      
         self.best_loss = float('inf')
 
-        # New: stage-wise best losses.
-        # Because STAGE_1 / STAGE_2 / STAGE_3 use different objective forms,
-        # their Total losses are not strictly comparable. These stage-wise
-        # checkpoints let you evaluate the best checkpoint from each phase.
+     
         self.best_stage_loss = {}
 
     def _setup_console_logger(self):
         logger = logging.getLogger('OrthoEngine')
         logger.setLevel(logging.INFO)
 
-        # Keep original behavior: avoid duplicated handlers if logger already exists.
+      
         if not logger.handlers:
             fh = logging.FileHandler(os.path.join(self.log_dir, 'train.log'))
             fh.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
@@ -98,7 +95,7 @@ class TrainingMonitor:
         It only changes checkpoint saving.
         """
 
-        # 1. Original global best across all stages.
+       
         if current_loss < self.best_loss:
             self.best_loss = current_loss
             save_dict = self._make_save_dict(current_loss, model, criterion, epoch, stage_name)
@@ -107,10 +104,10 @@ class TrainingMonitor:
             torch.save(save_dict, save_path)
 
             self.logger.info(
-                f"🌟 New Global Best! Ep {epoch} ({stage_name}) Loss: {current_loss:.4f} -> best_model_all_stages.pth"
+                f" New Global Best! Ep {epoch} ({stage_name}) Loss: {current_loss:.4f} -> best_model_all_stages.pth"
             )
 
-        # 2. New stage-wise best.
+      
         prev_stage_best = self.best_stage_loss.get(stage_name, float('inf'))
 
         if current_loss < prev_stage_best:
@@ -124,7 +121,7 @@ class TrainingMonitor:
             torch.save(save_dict, save_path)
 
             self.logger.info(
-                f"🏅 New Stage Best! Ep {epoch} ({stage_name}) Loss: {current_loss:.4f} -> {save_name}"
+                f" New Stage Best! Ep {epoch} ({stage_name}) Loss: {current_loss:.4f} -> {save_name}"
             )
 
     def close(self):
@@ -168,13 +165,13 @@ class Trainer:
             desc=f"Ep {epoch} [{mode_name}]"
         )
 
-        # Initialize all stats.
+       
         acc_metrics = {k: 0.0 for k in self.monitor.headers[3:-1]}
 
         valid_batches = 0
 
         for i, batch in pbar:
-            # 1. Unpack & move to device.
+         
             shape = batch['shape'].to(self.device)
             state = batch['input_seq'].view(-1, 32, 18).to(self.device)
             timestep = batch['timestep'].view(-1).to(self.device)
@@ -191,7 +188,7 @@ class Trainer:
             gt_mask_pos = batch['gt_mask_pos'].view(-1, 32).to(self.device)
             gt_mask_rot = batch['gt_mask_rot'].view(-1, 32).to(self.device)
 
-            # 2. Forward model.
+            
             mu_pos, log_var_pos, mu_rot, log_var_rot, logits_pos, logits_rot = self.model(
                 shape,
                 state,
@@ -202,7 +199,7 @@ class Trainer:
                 strat_vec_rot=strat_vec_rot
             )
 
-            # 3. Forward loss.
+           
             loss, d = self.criterion(
                 mu_pos,
                 log_var_pos,
@@ -223,7 +220,7 @@ class Trainer:
                 self.monitor.logger.warning(f"⚠️ NaN Loss at Ep {epoch}, Step {i}. Skipping.")
                 continue
 
-            # 4. Backward & optimize.
+           
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
@@ -235,7 +232,7 @@ class Trainer:
 
             valid_batches += 1
 
-            # 5. Track stats.
+          
             for k in acc_metrics:
                 if k in d and isinstance(d[k], (int, float)) and math.isfinite(d[k]):
                     acc_metrics[k] += d[k]
@@ -254,7 +251,7 @@ class Trainer:
         self.monitor.logger.info("🚀 Starting Training Engine")
 
         for epoch in range(start_epoch, self.config.NUM_EPOCHS):
-            # Dynamic stage routing.
+           
             stage_name, mode_name = self.get_stage_info(epoch)
 
             if epoch == self.config.STAGE1_EPOCHS:
@@ -264,10 +261,10 @@ class Trainer:
             elif epoch == self.config.STAGE2_EPOCHS + self.config.STAGE3_FREEZE_EPOCHS:
                 self.monitor.logger.info("➡️ Entering STAGE 3B: Unfreezing Rotation Variance")
 
-            # Train one epoch.
+           
             avg_stats = self.train_epoch(epoch + 1, stage_name, mode_name)
 
-            # Log & save.
+          
             lr = self.optimizer.param_groups[0]['lr']
             self.monitor.log_epoch(epoch + 1, stage_name, mode_name, avg_stats, lr)
 
@@ -280,7 +277,7 @@ class Trainer:
                 stage_name
             )
 
-            # Regular interval checkpoint.
+           
             if (epoch + 1) % 10 == 0:
                 torch.save({
                     'epoch': epoch,
