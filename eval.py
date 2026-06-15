@@ -13,11 +13,11 @@ from scipy.spatial.transform import Rotation as R
 # ==========================================
 CONFIG = {
     "max_eval_cases": 1000,
-    "compare_expert": True, # 必须开启以计算步数差
-    "inference_root": "/home/pa/version-final/inference results-news/inferece results-ab07-new",    
-    "expert_root": "/home/pa/version4/data/test_data", 
-    "hull_root": "/home/pa/version4/data/hull_512",
-    "remove_json": "/home/pa/version4/remove_idx_summary.json",
+    "compare_expert": True, 
+    "inference_root": "path/to/inference results",    
+    "expert_root": "path/to/test_data", 
+    "hull_root": "path/to/hull_512",
+    "remove_json": "path/to/remove_idx_summary.json",
     "limits": {
         "trans_max": 0.5,
         "rot_max_deg": 3.0,
@@ -31,13 +31,11 @@ CONFIG = {
 
 FULL_IDS = CONFIG["up_ids"] + CONFIG["down_ids"]
 
-# 黑名单 (已缩减，请保持您原始脚本的完整列表)
-ERROR_CASES = ['C01002722632.json', 'C01002722812.json', 'C01002724937.json', 'C01002726883.json'] 
-BAD_CASES = ["C01002727839", "C01002759801", "C01002797016"]
+# 黑名单
+ERROR_CASES = [] 
+BAD_CASES = []
 
-# ==========================================
-# 1. 工具函数
-# ==========================================
+
 def quat_to_matrix_numpy(quat):
     q = np.array(quat, dtype=np.float64)
     norm = np.linalg.norm(q)
@@ -62,9 +60,7 @@ def get_collision_pairs():
         pairs.append((i - 1, i, FULL_IDS[i-1], FULL_IDS[i]))
     return pairs
 
-# ==========================================
-# 2. 引擎与计算类 (保持逻辑一致)
-# ==========================================
+
 class CollisionEngine:
     def __init__(self, sample_name, hull_root):
         self.objs = {}
@@ -129,9 +125,7 @@ class MetricCalculator:
                     if dt > 0.01: vio += 1
         return sT, sR, vio, coll, (T - 1)
 
-# ==========================================
-# 3. 数据加载逻辑
-# ==========================================
+
 def load_json_case(sample_path, is_ddim=False):
     files = sorted([f for f in os.listdir(sample_path) if f.startswith("step") and f.endswith(".json")],
                    key=lambda x: int(x.replace("step", "").replace(".json", "")))
@@ -157,9 +151,7 @@ def load_txt_case(sample_path):
         seq.append(data)
     return seq
 
-# ==========================================
-# 4. 主评价流程
-# ==========================================
+
 def main():
     inf_root = CONFIG["inference_root"]
     exp_root = CONFIG["expert_root"]
@@ -199,7 +191,7 @@ def main():
             results["inf"]["coll"].append(coll)
             results["inf"]["steps"].append(steps)
             
-            # --- 专家数据评估 (如果存在) ---
+            # --- 专家数据评估  ---
             if CONFIG["compare_expert"] and os.path.exists(exp_path):
                 seq_exp = load_json_case(exp_path, is_ddim=CONFIG["is_expert_ddim"])
                 if seq_exp:
@@ -211,7 +203,7 @@ def main():
                     results["exp"]["coll"].append(colle)
                     results["exp"]["steps"].append(stepse)
                     
-                    # 🚀 计算步数差: |专家步数 - 推理步数|
+                    #  计算步数差: |专家步数 - 推理步数|
                     diff = abs(stepse - steps)
                     results["abs_step_diff"].append(diff)
 
@@ -235,7 +227,7 @@ def main():
         if results["abs_step_diff"]:
             avg_diff = np.mean(results["abs_step_diff"])
             print("-" * 85)
-            print(f"✨ Mean Absolute Step Difference (Expert vs Inf): {avg_diff:.4f} steps")
+            print(f" Mean Absolute Step Difference (Expert vs Inf): {avg_diff:.4f} steps")
     
     print("="*85)
 
